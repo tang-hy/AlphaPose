@@ -32,13 +32,13 @@ from ReidModels.resnet_fc import resnet50_fc512
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
-    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ps,buffer_size=30):
+    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ps,frame_id,buffer_size=30):
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
         self.kalman_filter = None
         self.mean, self.covariance = None, None
-        self.is_activated = False
+        self.is_activated = False if frame_id > 1 else True
 
         self.score = score
         self.tracklet_len = 0
@@ -232,7 +232,7 @@ class Tracker(object):
             feats = self.model(inps).cpu().numpy()
         bboxs = np.asarray(bboxs)
         if len(bboxs)>0:
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ps,30) for
+            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ps,self.frame_id,30) for
                           (tlbrs, f,p,c,ps) in zip(bboxs, feats,pose,cropped_boxes,pscores)]
         else:
             detections = []
@@ -248,8 +248,8 @@ class Tracker(object):
         ###joint track with bbox-iou
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         STrack.multi_predict(strack_pool)
-        dists_emb = embedding_distance(strack_pool, detections)
-        dists_emb = fuse_motion(self.kalman_filter, dists_emb, strack_pool, detections)
+        dists_emb = embedding_distance(strack_pool, detections,metric='euclidean')
+        #dists_emb = fuse_motion(self.kalman_filter, dists_emb, strack_pool, detections)
         matches, u_track, u_detection = linear_assignment(dists_emb, thresh=0.7)
 
         for itracked, idet in matches:
